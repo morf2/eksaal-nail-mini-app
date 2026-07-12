@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // SQLite for this phase (local, zero-setup). Moving to Postgres later only
+  // requires changing this provider + DATABASE_URL — models below are portable.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Mirrors packages/shared/src/booking.ts Booking type. services/design/statusHistory
+// are stored as JSON-serialized strings (SQLite's Prisma connector has no native
+// Json type — Postgres does, so this reverts to a real Json column when we move
+// there) rather than normalized into their own tables — normalizing further is a
+// deliberately deferred later step (see bookingServiceSchema comment in shared),
+// not required for this phase's API contract.
+model Booking {
+  id               String   @id @default(cuid())
+  clientId         String?
+  clientName       String?
+  telegramUsername String?
+  telegramId       String?
+  phone            String
+  services         String
+  date             String
+  startTime        String
+  endTime          String
+  durationMinutes  Int
+  totalPrice       Float
+  design           String?
+  coatingStatus    String?
+  desiredLength    String?
+  clientComment    String?
+  status           String
+  statusHistory    String
+  createdAt        String
+}
+
+// One row per Telegram user who has ever sent /start to the bot. role is a plain
+// string (not a Prisma enum — SQLite doesn't support them) and defaults to
+// 'CLIENT'; nothing assigns 'MASTER' automatically yet — that's follow-up work
+// once role-based notification routing actually exists.
+model BotSubscriber {
+  id        String   @id @default(cuid())
+  chatId    String   @unique
+  username  String?
+  role      String
+  createdAt String
+}

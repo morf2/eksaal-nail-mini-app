@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Env files — everything except the committed templates
+.env
+.env.*
+!.env.example
+
+# SQLite databases (contain real client data from local/dev testing)
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local tool config (personal, not shared project config)
+.claude/settings.local.json

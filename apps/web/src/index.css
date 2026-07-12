@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;500;600;700&family=Jost:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Tailwind's preflight resets spacing but never sets a background-color, so the
+   browser's default (white) shows through any gap before the app's own bg-background
+   div fully covers the viewport — most visible on load and with dvh quirks in mobile/
+   Telegram WebViews. Painting it here at the html/body level removes that gap entirely,
+   regardless of what causes it. */
+html,
+body {
+  @apply bg-background;
+}
+
+/* Desktop-only baseline scale (mobile/Telegram Mini App stays untouched below 1024px).
+   This is the primary desktop adaptation mechanism: bumping the root size scales every
+   rem-based Tailwind utility (text-*, p-*, gap-*, rounded-*, etc.) proportionally —
+   bigger text, headings, and spacing everywhere, with NO layout/structure changes.
+   Only exception: the portfolio grid explicitly goes 2 → 3/4 columns on desktop. */
+@media (min-width: 1024px) {
+  html {
+    font-size: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
