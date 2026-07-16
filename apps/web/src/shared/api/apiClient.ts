@@ -1,4 +1,6 @@
-export const API_BASE_URL = import.meta.env.VITE_API_URL
+// Falls back to the production API when VITE_API_URL isn't set at build time
+// (e.g. the hosting build didn't configure it) — local dev overrides via .env.
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://eksaal-api.onrender.com'
 
 interface ApiSuccess<T> {
   success: true
