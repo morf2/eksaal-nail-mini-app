@@ -1,0 +1,6 @@
+[build]
+  command = "npm install && npm run build --workspace @eksaal/web"
+  publish = "apps/web/dist"
+
+[build.environment]
+  VITE_API_URL = "https://eksaal-api.onrender.com"
