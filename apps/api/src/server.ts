@@ -12,7 +12,16 @@ dotenv.config()
 
 const app = express()
 
-app.use(cors({ origin: process.env.CORS_ORIGIN, credentials: true }))
+// Static whitelist for local dev ports + the deployed Netlify frontend, plus
+// CORS_ORIGIN from env for any additional/staging domain without a redeploy.
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://eksaal-nail.netlify.app',
+  ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
+]
+
+app.use(cors({ origin: allowedOrigins, credentials: true }))
 app.use(express.json())
 app.use(cookieParser())
 
