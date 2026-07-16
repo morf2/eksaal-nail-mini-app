@@ -9,6 +9,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.production
 
 # SQLite databases (contain real client data from local/dev testing)
 *.db
