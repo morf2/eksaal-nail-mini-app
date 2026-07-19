@@ -2,9 +2,16 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PortfolioItem } from '@eksaal/shared'
 import { mockPortfolioItems } from '../mocks/portfolio'
+import {
+  createPortfolioItemApi,
+  deletePortfolioItemApi,
+  fetchPortfolioFromApi,
+  updatePortfolioItemApi,
+} from '../api/portfolioApi'
+import type { UpdatePortfolioItemPayload } from '../api/portfolioApi'
 
 interface NewPortfolioItemInput {
-  imageUrl: string
+  imageBase64: string
   title: string
   category: PortfolioItem['category']
   description?: string
@@ -12,56 +19,129 @@ interface NewPortfolioItemInput {
 
 interface PortfolioState {
   items: PortfolioItem[]
-  // Simulates the future POST /admin/portfolio.
+  // Writes to POST /portfolio in the background — see comment on the implementation below.
   addItem: (input: NewPortfolioItemInput) => void
-  // Simulates the future PATCH /admin/portfolio/:id (used for both hide/show and edits).
-  updateItem: (id: string, patch: Partial<NewPortfolioItemInput>) => void
+  // Writes to PATCH /portfolio/:id in the background (edits and hide/show both use this).
+  updateItem: (id: string, patch: UpdatePortfolioItemPayload) => void
   toggleHidden: (id: string) => void
-  // Simulates the future DELETE /admin/portfolio/:id.
+  // Writes to DELETE /portfolio/:id in the background.
   deleteItem: (id: string) => void
 }
 
-function createMockPortfolioId(): string {
+function createLocalPortfolioId(): string {
   return `portfolio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-// Persisted to localStorage (key: eksaal-admin-portfolio) — the mock stand-in for a
-// real database + S3-hosted images until the backend exists (see project plan).
+// Persisted to localStorage (key: eksaal-admin-portfolio) as an offline cache / fallback —
+// same pattern as useAdminBookingsStore in adminBookings.ts. The source of truth is
+// apps/api's /portfolio API (Postgres + S3-backed) — on module load this store immediately
+// tries to hydrate `items` from GET /portfolio, overwriting the localStorage-restored value
+// with the server's copy. If the API is unreachable, that hydration silently fails and
+// whatever persist() already restored keeps serving the app.
 export const usePortfolioStore = create<PortfolioState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       items: mockPortfolioItems,
 
-      addItem: (input) =>
-        set((state) => ({
-          items: [
-            {
-              id: createMockPortfolioId(),
-              imageUrl: input.imageUrl,
-              title: input.title,
-              category: input.category,
-              description: input.description,
-              isHidden: false,
-              createdAt: new Date().toISOString(),
-            },
-            ...state.items,
-          ],
-        })),
+      // Optimistic local insert first (instant UI feedback), then persist to the API in
+      // the background and reconcile the client-generated id with the server-assigned
+      // one once it responds. If the API is unreachable, the local copy is simply left
+      // as-is — that's the fallback.
+      addItem: (input) => {
+        const localId = createLocalPortfolioId()
+        const optimisticItem: PortfolioItem = {
+          id: localId,
+          imageUrl: input.imageBase64,
+          title: input.title,
+          category: input.category,
+          description: input.description,
+          isHidden: false,
+          createdAt: new Date().toISOString(),
+        }
+        set((state) => ({ items: [optimisticItem, ...state.items] }))
 
-      updateItem: (id, patch) =>
-        set((state) => ({
-          items: state.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-        })),
+        createPortfolioItemApi(input)
+          .then((serverItem) => {
+            set((state) => ({
+              items: state.items.map((item) => (item.id === localId ? serverItem : item)),
+            }))
+          })
+          .catch((error) => {
+            console.warn(
+              '[portfolio] API unavailable, keeping local-only item (localStorage fallback):',
+              error,
+            )
+          })
+      },
 
-      toggleHidden: (id) =>
+      updateItem: (id, patch) => {
+        set((state) => ({
+          items: state.items.map((item) =>
+            item.id === id
+              ? { ...item, ...patch, imageUrl: patch.imageBase64 ?? item.imageUrl }
+              : item,
+          ),
+        }))
+
+        updatePortfolioItemApi(id, patch)
+          .then((serverItem) => {
+            set((state) => ({
+              items: state.items.map((item) => (item.id === id ? serverItem : item)),
+            }))
+          })
+          .catch((error) => {
+            console.warn(
+              '[portfolio] API unavailable, keeping local-only update (localStorage fallback):',
+              error,
+            )
+          })
+      },
+
+      toggleHidden: (id) => {
         set((state) => ({
           items: state.items.map((item) =>
             item.id === id ? { ...item, isHidden: !item.isHidden } : item,
           ),
-        })),
+        }))
 
-      deleteItem: (id) => set((state) => ({ items: state.items.filter((item) => item.id !== id) })),
+        const item = get().items.find((entry) => entry.id === id)
+        if (!item) return
+
+        updatePortfolioItemApi(id, { isHidden: item.isHidden })
+          .then((serverItem) => {
+            set((state) => ({
+              items: state.items.map((entry) => (entry.id === id ? serverItem : entry)),
+            }))
+          })
+          .catch((error) => {
+            console.warn(
+              '[portfolio] API unavailable, keeping local-only visibility change (localStorage fallback):',
+              error,
+            )
+          })
+      },
+
+      deleteItem: (id) => {
+        set((state) => ({ items: state.items.filter((item) => item.id !== id) }))
+        deletePortfolioItemApi(id).catch((error) => {
+          console.warn(
+            '[portfolio] API unavailable, item removed locally only (localStorage fallback):',
+            error,
+          )
+        })
+      },
     }),
     { name: 'eksaal-admin-portfolio' },
   ),
 )
+
+// Fire-and-forget hydration from the API as soon as this store is first imported —
+// replaces the localStorage/mock seed with the server's list, same as adminBookings.ts.
+fetchPortfolioFromApi()
+  .then((items) => usePortfolioStore.setState({ items }))
+  .catch((error) => {
+    console.warn(
+      '[portfolio] API unavailable at startup, using localStorage cache (fallback):',
+      error,
+    )
+  })

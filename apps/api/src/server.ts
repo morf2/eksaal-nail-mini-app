@@ -6,6 +6,7 @@ import dotenv from 'dotenv'
 import { bookingsRouter } from './modules/bookings/bookings.router'
 import { authRouter } from './modules/auth/auth.router'
 import { telegramRouter } from './modules/telegram/telegram.router'
+import { portfolioRouter } from './modules/portfolio/portfolio.router'
 import { sendError } from './lib/responses'
 
 dotenv.config()
@@ -22,7 +23,11 @@ const allowedOrigins = [
 ]
 
 app.use(cors({ origin: allowedOrigins, credentials: true }))
-app.use(express.json())
+// Default express.json() limit (100kb) is too small for base64-encoded portfolio
+// photos (see MAX_UPLOAD_SIZE_MB) — base64 itself adds ~33% overhead on top of the
+// file size, so this ceiling is intentionally higher than the actual upload cap
+// enforced in parseImageDataUrl.ts.
+app.use(express.json({ limit: '10mb' }))
 app.use(cookieParser())
 
 app.get('/health', (_req, res) => {
@@ -32,6 +37,7 @@ app.get('/health', (_req, res) => {
 app.use('/admin', authRouter)
 app.use('/bookings', bookingsRouter)
 app.use('/telegram', telegramRouter)
+app.use('/portfolio', portfolioRouter)
 
 app.use((_req, res) => {
   sendError(res, 'Not found', 404)

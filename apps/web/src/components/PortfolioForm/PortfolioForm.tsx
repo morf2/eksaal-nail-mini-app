@@ -7,7 +7,7 @@ import { TEXT_COLORS } from '../../shared/textColors'
 
 interface PortfolioFormProps {
   onSubmit: (input: {
-    imageUrl: string
+    imageBase64: string
     title: string
     category: PortfolioCategory
     description?: string
@@ -47,7 +47,7 @@ export default function PortfolioForm({ onSubmit, onCancel }: PortfolioFormProps
     event.preventDefault()
     if (!imageDataUrl || !title.trim()) return
     onSubmit({
-      imageUrl: imageDataUrl,
+      imageBase64: imageDataUrl,
       title: title.trim(),
       category,
       description: description.trim() || undefined,

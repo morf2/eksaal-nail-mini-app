@@ -1,9 +1,10 @@
-// Mock "upload" — turns a picked file into a base64 data URL so it survives a page
-// reload via localStorage without a backend. This is NOT how production should work:
-// once the backend/S3 exist, this should become a real multipart upload returning a
-// hosted URL (see project plan, admin portfolio section) — imageUrl stays a plain
-// string either way, so swapping this out later doesn't touch the rest of the app.
-const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 // 2MB — keeps localStorage usage sane
+// Turns a picked file into a base64 data URL, which is what gets sent as
+// `imageBase64` to POST/PATCH /portfolio — the API decodes it and uploads the bytes
+// to the S3-compatible bucket (see apps/api/src/lib/parseImageDataUrl.ts), storing
+// only the resulting bucket URL. Keep this ceiling comfortably under the API's
+// MAX_UPLOAD_SIZE_MB so oversized files get a clear client-side error instead of a
+// 400 from the server after the whole file has already been read.
+const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 // 2MB
 
 export function fileToDataUrl(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) {

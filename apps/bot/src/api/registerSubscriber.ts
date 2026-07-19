@@ -9,6 +9,7 @@ interface ApiResponse<T> {
 export interface RegisterSubscriberInput {
   chatId: string
   username?: string | null
+  role: 'CLIENT' | 'MASTER'
 }
 
 // Calls apps/api's POST /telegram/register — the bot process itself never
@@ -18,7 +19,7 @@ export async function registerSubscriber(input: RegisterSubscriberInput): Promis
   const response = await fetch(`${API_BASE_URL}/telegram/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chatId: input.chatId, username: input.username, role: 'CLIENT' }),
+    body: JSON.stringify({ chatId: input.chatId, username: input.username, role: input.role }),
   })
 
   const body = (await response.json()) as ApiResponse<unknown>

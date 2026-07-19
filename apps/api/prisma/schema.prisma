@@ -3,18 +3,14 @@ generator client {
 }
 
 datasource db {
-  // SQLite for this phase (local, zero-setup). Moving to Postgres later only
-  // requires changing this provider + DATABASE_URL — models below are portable.
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 // Mirrors packages/shared/src/booking.ts Booking type. services/design/statusHistory
-// are stored as JSON-serialized strings (SQLite's Prisma connector has no native
-// Json type — Postgres does, so this reverts to a real Json column when we move
-// there) rather than normalized into their own tables — normalizing further is a
-// deliberately deferred later step (see bookingServiceSchema comment in shared),
-// not required for this phase's API contract.
+// are stored as JSON-serialized strings rather than normalized into their own
+// tables — normalizing further is a deliberately deferred later step (see
+// bookingServiceSchema comment in shared), not required for this phase's API contract.
 model Booking {
   id               String   @id @default(cuid())
   clientId         String?
@@ -47,4 +43,18 @@ model BotSubscriber {
   username  String?
   role      String
   createdAt String
+}
+
+// Mirrors packages/shared/src/portfolio.ts PortfolioItem type. imageUrl points at the
+// S3-compatible bucket object (see apps/api/src/lib/s3.ts) — the DB only ever stores
+// the resulting URL, never image bytes.
+model PortfolioItem {
+  id          String   @id @default(cuid())
+  imageUrl    String
+  imageKey    String
+  title       String
+  category    String
+  description String?
+  isHidden    Boolean  @default(false)
+  createdAt   String
 }
