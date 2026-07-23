@@ -38,6 +38,13 @@ export async function uploadPortfolioImage(buffer: Buffer, contentType: string):
   if (!bucket || !publicUrlBase) {
     throw new Error('S3_BUCKET / S3_PUBLIC_URL_BASE is not configured')
   }
+  // S3_ENDPOINT/credentials aren't required to construct S3Client (it's built at
+  // module load either way), but leaving them unset makes PutObjectCommand fail
+  // with an opaque AWS SDK error (e.g. a DNS lookup failure) instead of a message
+  // that actually names the missing env var.
+  if (!process.env.S3_ENDPOINT || !process.env.S3_ACCESS_KEY_ID || !process.env.S3_SECRET_ACCESS_KEY) {
+    throw new Error('S3_ENDPOINT / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY is not configured')
+  }
 
   const extension = EXTENSION_BY_CONTENT_TYPE[contentType]
   if (!extension) {
