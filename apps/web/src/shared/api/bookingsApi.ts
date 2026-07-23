@@ -32,3 +32,11 @@ export async function updateBookingStatusApi(id: string, status: BookingStatus):
   })
   return parseResponse<Booking>(response)
 }
+
+export async function deleteBookingApi(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/bookings/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  await parseResponse<null>(response)
+}

@@ -135,13 +135,27 @@ export const usePortfolioStore = create<PortfolioState>()(
   ),
 )
 
-// Fire-and-forget hydration from the API as soon as this store is first imported —
-// replaces the localStorage/mock seed with the server's list, same as adminBookings.ts.
-fetchPortfolioFromApi()
-  .then((items) => usePortfolioStore.setState({ items }))
-  .catch((error) => {
-    console.warn(
-      '[portfolio] API unavailable at startup, using localStorage cache (fallback):',
-      error,
-    )
+// Fire-and-forget hydration from the API — replaces the localStorage/mock seed
+// with the server's list, same pattern as adminBookings.ts.
+function refetchPortfolio(): void {
+  fetchPortfolioFromApi()
+    .then((items) => usePortfolioStore.setState({ items }))
+    .catch((error) => {
+      console.warn('[portfolio] API unavailable, keeping cached portfolio (fallback):', error)
+    })
+}
+
+refetchPortfolio()
+
+// Same reasoning as the polling block in adminBookings.ts: this store is shared
+// by the admin panel, the Web gallery, and the Telegram Mini App as separate
+// sessions, so a new/edited/deleted item added in one only reaches the others via
+// re-fetching.
+const PORTFOLIO_POLL_INTERVAL_MS = 5000
+if (typeof window !== 'undefined') {
+  setInterval(refetchPortfolio, PORTFOLIO_POLL_INTERVAL_MS)
+  window.addEventListener('focus', refetchPortfolio)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refetchPortfolio()
   })
+}

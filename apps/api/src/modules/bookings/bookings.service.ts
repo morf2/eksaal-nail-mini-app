@@ -96,3 +96,11 @@ export async function updateBookingStatus(
 
   return booking
 }
+
+export async function deleteBooking(id: string): Promise<boolean> {
+  const existing = await prisma.booking.findUnique({ where: { id } })
+  if (!existing) return false
+
+  await prisma.booking.delete({ where: { id } })
+  return true
+}

@@ -4,7 +4,7 @@ import { bookingSchema, bookingStatusSchema } from '@eksaal/shared'
 import { asyncHandler } from '../../lib/asyncHandler'
 import { sendError, sendSuccess } from '../../lib/responses'
 import { requireAdminSession } from '../auth/requireAdminSession'
-import { createBooking, listBookings, updateBookingStatus } from './bookings.service'
+import { createBooking, deleteBooking, listBookings, updateBookingStatus } from './bookings.service'
 
 export const bookingsRouter = Router()
 
@@ -59,5 +59,18 @@ bookingsRouter.patch(
       return
     }
     sendSuccess(res, booking)
+  }),
+)
+
+bookingsRouter.delete(
+  '/:id',
+  requireAdminSession,
+  asyncHandler(async (req, res) => {
+    const deleted = await deleteBooking(req.params.id)
+    if (!deleted) {
+      sendError(res, 'Booking not found', 404)
+      return
+    }
+    sendSuccess(res, null)
   }),
 )

@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:4000'
+// Same fallback as registerSubscriber.ts — see comment there.
+const API_BASE_URL = process.env.API_BASE_URL || 'https://eksaal-api.onrender.com'
 
 interface ApiResponse<T> {
   success: boolean
