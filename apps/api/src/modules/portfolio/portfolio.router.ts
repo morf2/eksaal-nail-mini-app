@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import type { Request } from 'express'
 import { z } from 'zod'
 import { portfolioCategorySchema } from '@eksaal/shared'
 import { asyncHandler } from '../../lib/asyncHandler'
@@ -8,6 +9,7 @@ import { requireAdminSession } from '../auth/requireAdminSession'
 import {
   createPortfolioItem,
   deletePortfolioItem,
+  getPortfolioItemImage,
   listPortfolioItems,
   updatePortfolioItem,
 } from './portfolio.service'
@@ -18,12 +20,38 @@ function formatZodError(error: z.ZodError): string {
   return error.issues.map((issue) => `${issue.path.join('.') || 'body'}: ${issue.message}`).join('; ')
 }
 
+// Images are served from this same API (GET /portfolio/:id/image, see below), so the
+// DTO's imageUrl needs this API's own public origin. Building it from the request
+// itself (rather than a hardcoded/env-configured URL) means it's correct in both dev
+// and prod automatically. req.protocol only reflects the real scheme (https on Render,
+// which terminates TLS in front of the app) because server.ts sets `trust proxy`.
+function getImageBaseUrl(req: Request): string {
+  return `${req.protocol}://${req.get('host')}`
+}
+
 // Public, same as GET /bookings — the client gallery reads this unauthenticated.
 portfolioRouter.get(
   '/',
-  asyncHandler(async (_req, res) => {
-    const items = await listPortfolioItems()
+  asyncHandler(async (req, res) => {
+    const items = await listPortfolioItems(getImageBaseUrl(req))
     sendSuccess(res, items)
+  }),
+)
+
+// Public — referenced directly as <img src> from the admin panel, the site, and the
+// Mini App, all of which load it as a plain cross-origin image request (not fetch/XHR),
+// so it never goes through the credentialed-cookie / CORS path the JSON routes do.
+portfolioRouter.get(
+  '/:id/image',
+  asyncHandler(async (req, res) => {
+    const image = await getPortfolioItemImage(req.params.id)
+    if (!image) {
+      sendError(res, 'Portfolio item not found', 404)
+      return
+    }
+    res.set('Content-Type', image.contentType)
+    res.set('Cache-Control', 'public, max-age=300')
+    res.send(image.data)
   }),
 )
 
@@ -53,20 +81,21 @@ portfolioRouter.post(
       return
     }
 
-    // Unlike parseImageDataUrl's validation errors above (client's fault, 400),
-    // failures past this point are in the S3 upload / Prisma write themselves —
-    // surfacing the real message here (mirrors telegram.router.ts's /send-test
-    // pattern) means a misconfigured S3_BUCKET/credentials shows up directly in
-    // the admin's Network tab instead of only as a generic 500 with the actual
-    // cause visible solely in Render's server logs.
+    // Failures past this point are in image optimization (sharp) or the Prisma write
+    // itself — surfacing the real message here (mirrors telegram.router.ts's
+    // /send-test pattern) means a real failure shows up directly in the admin's
+    // Network tab instead of only as a generic 500 with the cause visible solely in
+    // Render's server logs.
     try {
-      const item = await createPortfolioItem({
-        title: parsed.data.title,
-        category: parsed.data.category,
-        description: parsed.data.description,
-        imageBuffer: image.buffer,
-        imageContentType: image.contentType,
-      })
+      const item = await createPortfolioItem(
+        {
+          title: parsed.data.title,
+          category: parsed.data.category,
+          description: parsed.data.description,
+          imageBuffer: image.buffer,
+        },
+        getImageBaseUrl(req),
+      )
       sendSuccess(res, item, 201)
     } catch (error) {
       console.error('[portfolio] failed to create item:', error)
@@ -104,14 +133,17 @@ portfolioRouter.patch(
     }
 
     try {
-      const item = await updatePortfolioItem(req.params.id, {
-        title: parsed.data.title,
-        category: parsed.data.category,
-        description: parsed.data.description,
-        isHidden: parsed.data.isHidden,
-        imageBuffer: image?.buffer,
-        imageContentType: image?.contentType,
-      })
+      const item = await updatePortfolioItem(
+        req.params.id,
+        {
+          title: parsed.data.title,
+          category: parsed.data.category,
+          description: parsed.data.description,
+          isHidden: parsed.data.isHidden,
+          imageBuffer: image?.buffer,
+        },
+        getImageBaseUrl(req),
+      )
       if (!item) {
         sendError(res, 'Portfolio item not found', 404)
         return

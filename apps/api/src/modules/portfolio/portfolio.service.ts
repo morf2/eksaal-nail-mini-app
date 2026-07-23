@@ -1,11 +1,11 @@
 import type { PortfolioItem } from '@eksaal/shared'
 import { prisma } from '../../lib/prisma'
-import { deletePortfolioImage, uploadPortfolioImage } from '../../lib/s3'
+import { optimizeImage } from '../../lib/image'
 import { toPortfolioDto } from './portfolio.mapper'
 
-export async function listPortfolioItems(): Promise<PortfolioItem[]> {
+export async function listPortfolioItems(imageBaseUrl: string): Promise<PortfolioItem[]> {
   const rows = await prisma.portfolioItem.findMany({ orderBy: { createdAt: 'desc' } })
-  return rows.map(toPortfolioDto)
+  return rows.map((row) => toPortfolioDto(row, imageBaseUrl))
 }
 
 export interface CreatePortfolioItemInput {
@@ -13,15 +13,17 @@ export interface CreatePortfolioItemInput {
   category: PortfolioItem['category']
   description?: string
   imageBuffer: Buffer
-  imageContentType: string
 }
 
-export async function createPortfolioItem(input: CreatePortfolioItemInput): Promise<PortfolioItem> {
-  const { url, key } = await uploadPortfolioImage(input.imageBuffer, input.imageContentType)
+export async function createPortfolioItem(
+  input: CreatePortfolioItemInput,
+  imageBaseUrl: string,
+): Promise<PortfolioItem> {
+  const optimized = await optimizeImage(input.imageBuffer)
   const row = await prisma.portfolioItem.create({
     data: {
-      imageUrl: url,
-      imageKey: key,
+      imageData: optimized.buffer,
+      imageContentType: optimized.contentType,
       title: input.title,
       category: input.category,
       description: input.description,
@@ -29,7 +31,7 @@ export async function createPortfolioItem(input: CreatePortfolioItemInput): Prom
       createdAt: new Date().toISOString(),
     },
   })
-  return toPortfolioDto(row)
+  return toPortfolioDto(row, imageBaseUrl)
 }
 
 export interface UpdatePortfolioItemInput {
@@ -38,27 +40,22 @@ export interface UpdatePortfolioItemInput {
   description?: string
   isHidden?: boolean
   imageBuffer?: Buffer
-  imageContentType?: string
 }
 
 export async function updatePortfolioItem(
   id: string,
   input: UpdatePortfolioItemInput,
+  imageBaseUrl: string,
 ): Promise<PortfolioItem | null> {
   const existing = await prisma.portfolioItem.findUnique({ where: { id } })
   if (!existing) return null
 
-  let imageUrl = existing.imageUrl
-  let imageKey = existing.imageKey
-  if (input.imageBuffer && input.imageContentType) {
-    const uploaded = await uploadPortfolioImage(input.imageBuffer, input.imageContentType)
-    imageUrl = uploaded.url
-    imageKey = uploaded.key
-
-    // Best-effort cleanup of the object being replaced — must not fail the update.
-    deletePortfolioImage(existing.imageKey).catch((error) => {
-      console.error('[portfolio] failed to delete replaced image:', error)
-    })
+  let imageData = existing.imageData
+  let imageContentType = existing.imageContentType
+  if (input.imageBuffer) {
+    const optimized = await optimizeImage(input.imageBuffer)
+    imageData = optimized.buffer
+    imageContentType = optimized.contentType
   }
 
   const row = await prisma.portfolioItem.update({
@@ -68,11 +65,11 @@ export async function updatePortfolioItem(
       category: input.category,
       description: input.description,
       isHidden: input.isHidden,
-      imageUrl,
-      imageKey,
+      imageData,
+      imageContentType,
     },
   })
-  return toPortfolioDto(row)
+  return toPortfolioDto(row, imageBaseUrl)
 }
 
 export async function deletePortfolioItem(id: string): Promise<boolean> {
@@ -80,11 +77,22 @@ export async function deletePortfolioItem(id: string): Promise<boolean> {
   if (!existing) return false
 
   await prisma.portfolioItem.delete({ where: { id } })
-
-  // Best-effort — the DB row is already gone either way, this just avoids leaking
-  // orphaned objects in the bucket.
-  deletePortfolioImage(existing.imageKey).catch((error) => {
-    console.error('[portfolio] failed to delete image from bucket:', error)
-  })
   return true
+}
+
+export interface PortfolioImage {
+  data: Buffer
+  contentType: string
+}
+
+// Backs GET /portfolio/:id/image — kept separate from the DTO path (toPortfolioDto never
+// touches imageData) so listing/creating/updating items never pulls image bytes into
+// memory unless something actually needs to serve them.
+export async function getPortfolioItemImage(id: string): Promise<PortfolioImage | null> {
+  const row = await prisma.portfolioItem.findUnique({
+    where: { id },
+    select: { imageData: true, imageContentType: true },
+  })
+  if (!row) return null
+  return { data: row.imageData, contentType: row.imageContentType }
 }

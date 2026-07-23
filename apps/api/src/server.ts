@@ -13,6 +13,12 @@ dotenv.config()
 
 const app = express()
 
+// Render terminates TLS in front of the app and forwards over plain HTTP, setting
+// X-Forwarded-Proto — without trust proxy, req.protocol always reads back 'http' even
+// in production. portfolio.router.ts relies on req.protocol being correct to build
+// the absolute image URL it returns (GET /portfolio/:id/image), so this isn't optional.
+app.set('trust proxy', 1)
+
 // Static whitelist for local dev ports + the deployed Netlify frontend, plus
 // CORS_ORIGIN from env for any additional/staging domain without a redeploy.
 const allowedOrigins = [
@@ -25,9 +31,10 @@ const allowedOrigins = [
 app.use(cors({ origin: allowedOrigins, credentials: true }))
 // Default express.json() limit (100kb) is too small for base64-encoded portfolio
 // photos (see MAX_UPLOAD_SIZE_MB) — base64 itself adds ~33% overhead on top of the
-// file size, so this ceiling is intentionally higher than the actual upload cap
-// enforced in parseImageDataUrl.ts.
-app.use(express.json({ limit: '10mb' }))
+// file size, and phone camera photos routinely land in the 5-10MB range before this
+// API's own server-side optimization (see lib/image.ts) ever gets a chance to shrink
+// them, so the ceiling here has to cover the raw upload, not the optimized result.
+app.use(express.json({ limit: '15mb' }))
 app.use(cookieParser())
 
 app.get('/health', (_req, res) => {

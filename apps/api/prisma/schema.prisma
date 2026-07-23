@@ -45,16 +45,20 @@ model BotSubscriber {
   createdAt String
 }
 
-// Mirrors packages/shared/src/portfolio.ts PortfolioItem type. imageUrl points at the
-// S3-compatible bucket object (see apps/api/src/lib/s3.ts) — the DB only ever stores
-// the resulting URL, never image bytes.
+// Mirrors packages/shared/src/portfolio.ts PortfolioItem type. The image itself is
+// stored as bytes directly on the row (imageData) — no S3/R2, per project decision —
+// re-encoded to WebP and capped at 1200px wide before storing (see
+// apps/api/src/lib/image.ts) to keep this column from growing the DB too fast against
+// Render Postgres' 1GB cap. Served back out through GET /portfolio/:id/image; the
+// frontend-facing imageUrl on the DTO is that route's URL, built per-request in
+// portfolio.mapper.ts — it isn't a column on this model.
 model PortfolioItem {
-  id          String   @id @default(cuid())
-  imageUrl    String
-  imageKey    String
-  title       String
-  category    String
-  description String?
-  isHidden    Boolean  @default(false)
-  createdAt   String
+  id               String   @id @default(cuid())
+  imageData        Bytes
+  imageContentType String
+  title            String
+  category         String
+  description      String?
+  isHidden         Boolean  @default(false)
+  createdAt        String
 }
